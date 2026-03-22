@@ -1,450 +1,223 @@
-# SSH Skill - 高性能 SSH 操作技能
+# SSH Skill for Codex
 
-> 为 Codex 优化的企业级 SSH 管理工具，适合服务器与网络设备巡检
+面向 Codex 的 SSH skill，统一处理服务器和网络设备的远程执行、传输和批量操作。
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+这个分支额外补强了网络设备交互式 shell，当前已经覆盖：
 
-## ✨ 核心特性
+- Linux / Unix 服务器
+- 跳板机 / Bastion / ProxyJump
+- 上传、下载、服务器间传输
+- 批量并发执行
+- 华为、H3C、FortiGate 等 SSH 网络设备
 
-### 🚀 极致性能
+当前推荐环境：
 
-**守护进程长连接模式** - 业界领先的性能优化
+- Windows
+- PowerShell
+- `py -3`
+- `$HOME/.codex/skills/ssh-skill/scripts`
 
-| 模式 | 单次命令 | 连续 10 条 | 连续 30 条 | 性能提升 |
-|------|----------|-----------|-----------|---------|
-| 传统直连 | ~0.45s | ~4.5s | ~13.5s | - |
-| **守护进程** | **~0.12s** | **~1.2s** | **~3.6s** | **🔥 3.75x** |
+## What This Skill Supports
 
-- 首次连接自动启动守护进程
-- 多个 Codex / Claude 类会话共享连接
-- 自动心跳检测和断线重连
-- 空闲 30 分钟自动退出
+### Server operations
 
-### 📊 智能大文件传输
+- 远程执行命令
+- 复用守护进程长连接
+- 上传、下载、断点续传
+- 服务器到服务器直传
+- 基于 `~/.ssh/config` 的别名管理
 
-**自动切换传输模式** - 根据文件大小智能选择最优方案
+### Network device operations
 
-```
-文件大小 ≤ 80MB  →  原生 SCP（快速完成）
-文件大小 > 80MB  →  Paramiko SFTP（实时进度）
-```
+- 自动识别部分网络设备目标并切到 shell 模式
+- 按厂商加载 prompt、分页、错误识别规则
+- 支持多命令拆分执行
+- 支持分页提示和确认提示自动应答
+- 支持只读巡检优先的默认策略
 
-**实时进度显示**：
-```json
-{
-  "file": "large-file.iso",
-  "total": 310984990,
-  "transferred": 155492495,
-  "percent": 50.0,
-  "speed": "2.1 MB/s",
-  "eta": 74.2
-}
-```
+当前内置厂商 profile：
 
-**智能超时计算**：
-- 根据文件大小自动计算超时时间
-- 公式：`文件大小(MB) ÷ 1MB/s + 60秒缓冲`
-- 范围：60 秒 - 3600 秒（1小时）
+- Huawei
+- H3C
+- FortiGate
+- Cisco
+- Arista
+- Juniper
 
-**传输优化**：
-- 块大小：128KB（4倍性能提升）
-- 支持断点续传
-- 无超时限制（大文件）
-- 目录递归上传/下载
+## Install
 
-### 🌐 服务器间直接传输
+1. 安装 Python 依赖：
 
-**零本地带宽消耗** - 数据直接在服务器间传输
-
-```bash
-# 自动模式（推荐）- 智能选择最优方式
-ssh_server_transfer.py source-server /data/backup.tar.gz target-server /backup/
-
-# 直连模式 - 大文件推荐（数据不经过本地）
-ssh_server_transfer.py source-server /data/large.iso target-server /data/ --mode direct
-
-# 支持 rsync 增量同步
-ssh_server_transfer.py source-server /data/ target-server /backup/ --use-rsync
+```powershell
+py -3 -m pip install paramiko
 ```
 
-**传输模式对比**：
+2. 把仓库放到 Codex skill 目录：
 
-| 模式 | 数据流向 | 适用场景 | 优势 |
-|------|---------|---------|------|
-| 直连 (direct) | 源 → 目标 | 大文件、服务器间网络通 | 速度快，不占本地带宽 |
-| 流式 (stream) | 源 → 本地 → 目标 | 小文件、网络不通 | 无需服务器间配置 |
-| 混合 (hybrid) | 先尝试直连，失败降级 | 不确定环境 | 自动适应 |
-| 自动 (auto) | 智能判断 | 默认 | 最优选择 |
-
-### 🎯 跳板机支持
-
-**多级跳板机自动处理** - 使用标准 ProxyJump
-
-```ssh-config
-Host internal-server
-    HostName 10.0.1.100
-    User appuser
-    ProxyJump bastion1,bastion2
+```text
+$HOME/.codex/skills/ssh-skill
 ```
 
-AI 只需要知道 `internal-server` 别名，底层自动处理多级跳转。
+3. 在 `~/.ssh/config` 中准备好主机别名、账号和跳板机配置。
 
-### 🖧 网络设备交互模式
+4. 在 Codex 中使用自然语言触发 SSH 场景，或直接运行脚本。
 
-**面向交换机 / 路由器 / 防火墙的交互式 CLI**
+## Quick Start
 
-- 自动关闭分页
-- 提示符识别
-- 适配交互式 shell 命令
-- 支持只读巡检和配置模式
-- 适合华为、H3C、FortiGate 等常见 SSH 网络设备
-
-说明：
-- 华为 / H3C 的禁分页命令属于会话级命令，适合巡检前自动执行
-- FortiGate 的 `config system console -> set output standard` 属于配置模式变更
-- 因此 FortiGate 默认不自动改分页设置，保持只读巡检优先
-
-### 🔧 统一配置管理
-
-**基于标准 OpenSSH 配置** - 兼容所有 SSH 工具
-
-```bash
-# 列出所有服务器
-ssh_config_manager_v3.py list-servers
-
-# 查找服务器
-ssh_config_manager_v3.py find "web"
-
-# 创建配置
-ssh_config_manager_v3.py create --alias prod-web-01 --host 192.168.1.100 --user root
-
-# 更新配置
-ssh_config_manager_v3.py update prod-web-01 --description "生产环境 Web 服务器"
-```
-
-**元数据支持**：
-- 环境标签（production/development/staging）
-- 位置信息
-- 自定义标签
-- 创建/更新时间
-
-### ⚡ 批量并发操作
-
-**对多台服务器并发执行命令**
-
-```bash
-# 对所有服务器执行
-ssh_cluster.py "uptime" --parallel
-
-# 按环境过滤
-ssh_cluster.py "systemctl status nginx" --environment production --parallel
-
-# 按标签过滤
-ssh_cluster.py "df -h" --tags "web,nginx" --parallel --max-workers 10
-```
-
-## 📦 安装
-
-### 依赖
-
-```bash
-pip install paramiko
-```
-
-### 配置
-
-1. 将 `ssh-skill` 目录放到 `~/.codex/skills/` 下
-2. Windows + PowerShell 环境优先使用 `py -3`
-3. 配置 SSH 密钥或密码认证
-4. 开始使用
-
-## 🎬 快速开始
-
-### 执行远程命令
+### Execute on a server
 
 ```powershell
 py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_execute.py" prod-web-01 "systemctl status nginx"
 ```
 
-### 执行网络设备命令
+### Upload a file
 
 ```powershell
-# H3C / 华为先禁分页，再执行巡检命令
-py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_execute.py" h3c_1jr1 "screen-length disable;;display version"
+$env:MSYS_NO_PATHCONV = '1'
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_upload.py" prod-web-01 ".\\app.tar.gz" "/tmp/app.tar.gz"
+```
 
-# FortiGate 读取状态
+### Download a file
+
+```powershell
+$env:MSYS_NO_PATHCONV = '1'
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_download.py" prod-web-01 "/var/log/nginx/access.log" ".\\access.log"
+```
+
+### Transfer server to server
+
+```powershell
+$env:MSYS_NO_PATHCONV = '1'
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_server_transfer.py" old-server "/data/backup.tar.gz" new-server "/backup/"
+```
+
+### Run on multiple hosts
+
+```powershell
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_cluster.py" "df -h" --environment production --parallel
+```
+
+## Network Device Usage
+
+`ssh_execute.py` 现在支持三种模式：
+
+- `--mode exec`：按传统服务器命令执行
+- `--mode shell`：强制走交互式 shell
+- `--mode auto`：根据别名和元数据自动判断
+
+### Huawei
+
+```powershell
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_execute.py" core-sw-01 "display version;;display lldp neighbor brief"
+```
+
+默认会发送会话级禁分页命令：
+
+```text
+screen-length 0 temporary
+```
+
+### H3C
+
+```powershell
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_execute.py" access-sw-07 "display version;;display interface brief"
+```
+
+默认会发送会话级禁分页命令：
+
+```text
+screen-length disable
+```
+
+### FortiGate
+
+```powershell
 py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_execute.py" edge-fgt-01 "get system status"
 ```
 
-建议：
-- 先执行只读命令确认设备类型和提示符
-- 再执行厂商对应命令
-- 未经明确确认，不直接下配置变更
-- FortiGate 如需调整 console 输出模式，先明确这是配置变更
+FortiGate 当前默认保持只读优先：
 
-### 上传文件
+- 不自动执行 `config system console`
+- 不自动执行 `set output standard`
+- 不隐式修改 console / paging 配置
 
-```powershell
-# 小文件（快速）
-$env:MSYS_NO_PATHCONV='1'
-py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_upload.py" prod-web-01 ./app.tar.gz /tmp/
+这意味着它更适合默认巡检，不会在“读状态”前先改设备配置。
 
-# 大文件（自动显示进度）
-py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_upload.py" prod-web-01 ./large-file.iso /tmp/
+### Shortcuts
 
-# 断点续传
-py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_upload.py" prod-web-01 ./large-file.iso /tmp/ --resume
+已定义的快捷命令只在对应厂商下生效：
 
-# 递归上传目录
-py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_upload.py" prod-web-01 ./dist/ /var/www/html/ --recursive
-```
+- Huawei / H3C：`@uptime`、`@version`
+- FortiGate：`@status`、`@ha`、`@version`
 
-### 下载文件
+未定义的快捷命令现在会在本地直接报错，不再透传到设备。
 
-```powershell
-$env:MSYS_NO_PATHCONV='1'
-py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_download.py" prod-web-01 /var/log/app.log ./app.log
-```
+## Safety Defaults
 
-### 服务器间传输
+这条分支刻意收紧了几个高风险点：
 
-```powershell
-$env:MSYS_NO_PATHCONV='1'
-py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_server_transfer.py" source-server /data/backup.tar.gz target-server /backup/
-```
+- FortiGate 默认不改配置，只做只读命令
+- 未知网络设备 shortcut 本地直接拒绝
+- 分页 `more` 匹配已收紧，避免普通输出误触发翻页
+- Obsidian 密码回退只有在显式环境变量开启时才生效
 
-### 网络设备巡检
+如果要执行配置变更，建议显式使用：
 
-```powershell
-py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_execute.py" h3c_1jr1 "screen-length disable"
-py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_execute.py" h3c_1jr1 "display current-configuration"
-```
+- `--mode shell`
+- `--config-mode`
+- `--save`
 
-## 🎯 使用场景
+并在执行前确认命令确实会改配置。
 
-### 场景 1：日常运维
+## SSH Config Notes
 
-```bash
-# 快速检查服务器状态
-ssh_execute.py web-01 "uptime && free -m && df -h"
+这个 skill 继续基于标准 `~/.ssh/config` 工作，建议优先维护别名，不要在命令里重复写裸 IP。
 
-# 批量重启服务
-ssh_cluster.py "systemctl restart nginx" --environment production --parallel
-```
-
-### 场景 2：大文件部署
-
-```bash
-# 上传 500MB 应用包（自动显示进度）
-ssh_upload.py prod-web-01 ./app-v2.0.tar.gz /opt/apps/
-
-# 输出示例：
-# 上传进度: 45.2% (2.1 MB/s) ETA: 102.3s
-```
-
-### 场景 3：数据迁移
-
-```bash
-# 服务器间直接传输（不占用本地带宽）
-ssh_server_transfer.py old-server /data/database.sql new-server /data/ --mode direct
-
-# 使用 rsync 增量同步
-ssh_server_transfer.py source /data/ target /backup/ --use-rsync
-```
-
-### 场景 4：跳板机访问
-
-```bash
-# 通过跳板机访问内网服务器（自动处理）
-ssh_execute.py internal-server "docker ps"
-```
-
-### 场景 5：网络设备巡检
-
-```bash
-# H3C 交换机巡检
-ssh_execute.py h3c_1jr1 "screen-length disable;;display current-configuration"
-
-# FortiGate 状态查看
-ssh_execute.py edge-fgt-01 "get system status"
-```
-
-## 📈 性能数据
-
-### 真实测试数据
-
-**测试环境**：
-- 文件大小：297MB
-- 网络速度：1.6-2.1 MB/s
-- 服务器：test-001
-
-**测试结果**：
-
-| 指标 | 原生 SCP | Paramiko SFTP | 优势 |
-|------|---------|--------------|------|
-| 进度显示 | ❌ 无 | ✅ 实时 | 用户体验 |
-| 超时问题 | ❌ 30秒固定 | ✅ 无限制 | 稳定性 |
-| 断点续传 | ❌ 不支持 | ✅ 支持 | 可靠性 |
-| 传输速度 | 快 | 稍慢 | 性能 |
-
-**智能选择策略**：
-- 文件 ≤ 80MB：使用原生 SCP（快速完成）
-- 文件 > 80MB：使用 Paramiko SFTP（实时进度）
-
-### 守护进程性能
-
-**命令执行速度对比**：
-
-```
-传统模式：
-  命令 1: 0.45s
-  命令 2: 0.45s
-  命令 3: 0.45s
-  总计: 1.35s
-
-守护进程模式：
-  命令 1: 0.45s (首次启动守护进程)
-  命令 2: 0.12s (复用连接)
-  命令 3: 0.12s (复用连接)
-  总计: 0.69s (提升 1.96x)
-```
-
-## 🔐 安全特性
-
-- 支持密钥认证和密码认证
-- 密码加密存储在 SSH 配置注释中
-- 支持密钥密码保护
-- 自动添加主机密钥（可配置）
-- 支持 SSH agent forwarding
-
-## 🛠️ 高级功能
-
-### 断点续传
-
-```bash
-# 上传大文件，支持中断后继续
-ssh_upload.py prod-web-01 ./large-file.iso /tmp/ --resume
-```
-
-### 目录递归传输
-
-```bash
-# 递归上传整个目录
-ssh_upload.py prod-web-01 ./dist/ /var/www/html/ --recursive
-```
-
-### 自动错误恢复
-
-- SSH 连接断开自动重连（最多 3 次）
-- 每 60 秒心跳检测连接状态
-- 传输失败自动重试
-
-### 配置管理
-
-```bash
-# 按环境过滤
-ssh_config_manager_v3.py list-servers --environment production
-
-# 按标签过滤
-ssh_config_manager_v3.py list-servers --tags web,nginx
-
-# 更新服务器信息
-ssh_config_manager_v3.py update prod-web-01 --description "新描述" --tags tag1,tag2
-```
-
-## 📚 配置示例
-
-### 密钥认证
+示例：
 
 ```ssh-config
-# ===== prod-web-01 =====
-# description: 生产环境 Web 服务器
-# environment: production
-# tags: web,nginx,production
-# location: 阿里云-北京
-Host prod-web-01
-    HostName 192.168.1.100
+Host core-sw-01
+    HostName 10.1.1.2
+    User admin
+
+Host edge-fgt-01
+    HostName 10.1.1.1
+    User admin
+
+Host app-prod-01
+    HostName 10.10.10.21
     User root
-    IdentityFile ~/.ssh/id_rsa
-    Port 22
+    ProxyJump bastion-01
 ```
 
-### 密码认证
+## Validation
 
-```ssh-config
-# ===== dev-server =====
-# description: 开发服务器
-# environment: development
-# password: your-password
-Host dev-server
-    HostName 192.168.1.200
-    User root
-    Port 22
+当前分支已完成的验证：
+
+- 单元测试：`20 passed, 2 skipped`
+- 2026-03-22 真机只读验证通过
+- 华为设备：`display version`、`display lldp neighbor brief`
+- H3C 设备：`display version`、`display interface brief`
+- FortiGate：`get system status`
+
+真机验证结论：
+
+- 华为 / H3C 的会话级禁分页正常
+- FortiGate prompt 识别正常
+- FortiGate 默认不会再自动修改 console 配置
+
+## Branch Status
+
+这些网络设备增强当前位于：
+
+```text
+feat/network-device-shell
 ```
 
-### 跳板机配置
+不是 `main`。
 
-```ssh-config
-Host bastion
-    HostName bastion.example.com
-    User jumpuser
-    IdentityFile ~/.ssh/jump_key
+如果你要在 GitHub 上看这版能力，请看这个分支，而不是默认分支。
 
-Host internal-server
-    HostName 10.0.1.100
-    User appuser
-    IdentityFile ~/.ssh/id_rsa
-    ProxyJump bastion
-```
+## License
 
-## 🎨 与 Codex 集成
-
-在 Codex 中，AI 会自动使用 ssh-skill 处理 SSH 操作：
-
-```
-用户：在 prod-web-01 上检查 Nginx 状态
-AI：[自动调用 ssh_execute.py]
-
-用户：上传 app.tar.gz 到 prod-web-01 的 /tmp 目录
-AI：[自动调用 ssh_upload.py]
-
-用户：从 old-server 迁移数据到 new-server
-AI：[自动调用 ssh_server_transfer.py]
-```
-
-## 🔄 版本历史
-
-### v3.2 (2026-03-04)
-- ✨ **大文件传输优化**：智能切换传输模式（80MB 阈值）
-- ✨ **实时进度显示**：百分比、速度、ETA
-- ✨ **智能超时计算**：根据文件大小自动计算
-- ✨ **块大小优化**：32KB → 128KB（4倍提升）
-- ✨ **无超时限制**：大文件传输不再超时
-
-### v3.1
-- 守护进程长连接模式
-- 服务器间直接传输
-- 批量并发操作
-- 统一配置管理
-
-### v3.0
-- 基于 OpenSSH 配置
-- 跳板机支持
-- 元数据管理
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## 📄 许可证
-
-MIT License
-
-## 👨‍💻 作者
-
-Michael Zhang - [@badseal](https://github.com/badseal)
-
----
-
-**让远程服务器操作像本地一样简单高效！** 🚀
+MIT
