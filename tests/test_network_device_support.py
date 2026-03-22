@@ -14,9 +14,13 @@ if LIB_DIR not in sys.path:
 from config_v3 import SSHConfigLoaderV3
 from network_device import (
     detect_error,
+    expand_command_shortcuts,
     get_device_profile,
     is_network_metadata,
+    is_network_target,
     split_command_text,
+    vendor_from_alias,
+    vendor_from_context,
     vendor_from_metadata,
 )
 
@@ -37,6 +41,23 @@ class NetworkDeviceHelperTests(unittest.TestCase):
         })
         self.assertEqual(vendor, "cisco")
 
+    def test_vendor_from_alias_matches_real_environment_names(self):
+        self.assertEqual(vendor_from_alias("POE-1"), "huawei")
+        self.assertEqual(vendor_from_alias("1-JR-7"), "h3c")
+        self.assertEqual(vendor_from_alias("firewall"), "fortigate")
+
+    def test_vendor_from_context_uses_model_when_metadata_has_no_explicit_vendor(self):
+        vendor = vendor_from_context("Core", {
+            "model": "FutureMatrix S7706",
+            "tags": ["network"],
+        })
+        self.assertEqual(vendor, "huawei")
+
+    def test_is_network_target_detects_alias_without_metadata(self):
+        self.assertTrue(is_network_target("Aggregation-1", {}))
+        self.assertTrue(is_network_target("2-JR-9", None))
+        self.assertFalse(is_network_target("app-web-01", {"tags": ["linux", "web"]}))
+
     def test_is_network_metadata_detects_tags(self):
         self.assertTrue(is_network_metadata({"tags": ["network", "switch"]}))
         self.assertFalse(is_network_metadata({"tags": ["linux", "web"]}))
@@ -50,6 +71,21 @@ class NetworkDeviceHelperTests(unittest.TestCase):
         profile = get_device_profile("huawei")
         error = detect_error("Error: Wrong parameter found at '^' position.", profile)
         self.assertEqual(error, "Error:")
+
+    def test_detect_error_for_fortigate(self):
+        profile = get_device_profile("fortigate")
+        error = detect_error("Command fail. Return code -61", profile)
+        self.assertEqual(error, "Command fail")
+
+    def test_expand_command_shortcuts_for_real_vendor_checks(self):
+        self.assertEqual(
+            expand_command_shortcuts(["@uptime"], "h3c"),
+            ["display version | include uptime"],
+        )
+        self.assertEqual(
+            expand_command_shortcuts(["@status", "@ha"], "fortigate"),
+            ["get system status", "get system ha status"],
+        )
 
 
 class ProxyJumpParsingTests(unittest.TestCase):

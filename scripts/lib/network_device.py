@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 DEFAULT_PROMPT_PATTERNS = [
     re.compile(r"(?m)(?:^|\n)\S+[>#]\s*$"),
+    re.compile(r"(?m)(?:^|\n).+ [#$>]\s*$"),
     re.compile(r"(?m)(?:^|\n)<[^>\n]+>\s*$"),
     re.compile(r"(?m)(?:^|\n)\[[^\]\n]+\]\s*$"),
 ]
@@ -62,6 +63,7 @@ class DeviceProfile:
     more_patterns: Tuple[re.Pattern, ...] = tuple(DEFAULT_MORE_PATTERNS)
     confirm_rules: Tuple[Tuple[re.Pattern, str], ...] = tuple(DEFAULT_CONFIRM_RULES)
     error_patterns: Tuple[re.Pattern, ...] = tuple(DEFAULT_ERROR_PATTERNS)
+    command_shortcuts: Dict[str, str] = None
 
 
 _PROFILES: Dict[str, DeviceProfile] = {
@@ -92,13 +94,23 @@ _PROFILES: Dict[str, DeviceProfile] = {
         enter_config_command="system-view",
         exit_config_command="return",
         save_command="save",
+        prompt_patterns=(
+            re.compile(r"(?m)(?:^|\n)<[^>\n]+>\s*$"),
+            re.compile(r"(?m)(?:^|\n)\[[~\*]?[^\]\n]+\]\s*$"),
+        ),
         confirm_rules=tuple(DEFAULT_CONFIRM_RULES) + (
             (re.compile(r"continue\? ?\[y/n\]", re.IGNORECASE), "Y\n"),
+            (re.compile(r"are you sure to continue\? ?\[y/n\]", re.IGNORECASE), "Y\n"),
         ),
         error_patterns=tuple(DEFAULT_ERROR_PATTERNS) + (
             re.compile(r"wrong parameter found", re.IGNORECASE),
             re.compile(r"too many parameters", re.IGNORECASE),
+            re.compile(r"error: unrecognized command", re.IGNORECASE),
         ),
+        command_shortcuts={
+            "@uptime": "display version | include uptime",
+            "@version": "display version",
+        },
     ),
     "h3c": DeviceProfile(
         vendor="h3c",
@@ -106,10 +118,45 @@ _PROFILES: Dict[str, DeviceProfile] = {
         enter_config_command="system-view",
         exit_config_command="return",
         save_command="save force",
+        prompt_patterns=(
+            re.compile(r"(?m)(?:^|\n)<[^>\n]+>\s*$"),
+            re.compile(r"(?m)(?:^|\n)\[[^\]\n]+\]\s*$"),
+        ),
+        confirm_rules=tuple(DEFAULT_CONFIRM_RULES) + (
+            (re.compile(r"continue\? ?\[y/n\]", re.IGNORECASE), "Y\n"),
+        ),
         error_patterns=tuple(DEFAULT_ERROR_PATTERNS) + (
             re.compile(r"wrong parameter found", re.IGNORECASE),
             re.compile(r"too many parameters", re.IGNORECASE),
+            re.compile(r"% unrecognized command", re.IGNORECASE),
         ),
+        command_shortcuts={
+            "@uptime": "display version | include uptime",
+            "@version": "display version",
+        },
+    ),
+    "fortigate": DeviceProfile(
+        vendor="fortigate",
+        prompt_patterns=(
+            re.compile(r"(?m)(?:^|\n)[A-Za-z0-9_.-]+(?: \([^)]+\))? [#$]\s*$"),
+            re.compile(r"(?m)(?:^|\n)[A-Za-z0-9_.-]+(?: \([^)]+\))? >\s*$"),
+        ),
+        confirm_rules=tuple(DEFAULT_CONFIRM_RULES) + (
+            (re.compile(r"do you want to continue\? ?\(y/n\)", re.IGNORECASE), "y\n"),
+            (re.compile(r"continue\? ?\(y/n\)", re.IGNORECASE), "y\n"),
+        ),
+        error_patterns=tuple(DEFAULT_ERROR_PATTERNS) + (
+            re.compile(r"command fail(?:ed)?", re.IGNORECASE),
+            re.compile(r"unknown action", re.IGNORECASE),
+            re.compile(r"parse error", re.IGNORECASE),
+            re.compile(r"node_check_object fail", re.IGNORECASE),
+        ),
+        command_shortcuts={
+            "@status": "get system status",
+            "@ha": "get system ha status",
+            "@perf": "get system performance status",
+            "@version": "get system status",
+        },
     ),
     "juniper": DeviceProfile(
         vendor="juniper",
@@ -134,7 +181,38 @@ _VENDOR_ALIASES = {
     "vrp": "huawei",
     "comware": "h3c",
     "junos": "juniper",
+    "fortios": "fortigate",
+    "fortigate": "fortigate",
+    "fortinet": "fortigate",
 }
+
+_NETWORK_TOKENS = (
+    "switch",
+    "router",
+    "firewall",
+    "network",
+    "huawei",
+    "h3c",
+    "juniper",
+    "arista",
+    "fortigate",
+    "fortinet",
+    "fortios",
+    "ac",
+    "poe",
+)
+
+_ALIAS_VENDOR_RULES = [
+    (re.compile(r"^(?:poe-\d+|ac\d+|core|aggregation-\d+)$", re.IGNORECASE), "huawei"),
+    (re.compile(r"^\d+-jr-\d+$", re.IGNORECASE), "h3c"),
+    (re.compile(r"^(?:fw\d*|firewall|route)$", re.IGNORECASE), "fortigate"),
+]
+
+_MODEL_VENDOR_RULES = [
+    (re.compile(r"\b(?:s5735|s67\d{2}|s77\d{2}|futurematrix)\b", re.IGNORECASE), "huawei"),
+    (re.compile(r"\b(?:s5048|s1850|s5120|comware)\b", re.IGNORECASE), "h3c"),
+    (re.compile(r"\bfortigate\b|\bfg[0-9a-z-]+\b", re.IGNORECASE), "fortigate"),
+]
 
 
 def normalize_vendor(vendor: Optional[str]) -> str:
@@ -166,13 +244,16 @@ def is_network_metadata(metadata: Optional[Dict[str, object]]) -> bool:
             metadata.get("device_vendor"),
             metadata.get("platform"),
             metadata.get("role"),
+            metadata.get("description"),
+            metadata.get("hostname"),
+            metadata.get("model"),
             *tags,
         ]
         if item
     )
     return any(
         token in search_space
-        for token in ["switch", "router", "firewall", "network", "cisco", "huawei", "h3c", "juniper", "arista"]
+        for token in _NETWORK_TOKENS
     )
 
 
@@ -197,7 +278,41 @@ def vendor_from_metadata(metadata: Optional[Dict[str, object]]) -> str:
         if normalized in _PROFILES:
             return normalized
 
+    for key in ("model", "description", "hostname"):
+        value = metadata.get(key)
+        if not value:
+            continue
+        text = str(value)
+        for pattern, vendor in _MODEL_VENDOR_RULES:
+            if pattern.search(text):
+                return vendor
+
     return "generic"
+
+
+def vendor_from_alias(alias: Optional[str]) -> str:
+    """根据别名推断厂商，优先适配当前现网命名。"""
+    if not alias:
+        return "generic"
+    for pattern, vendor in _ALIAS_VENDOR_RULES:
+        if pattern.match(alias.strip()):
+            return vendor
+    return "generic"
+
+
+def vendor_from_context(alias: Optional[str], metadata: Optional[Dict[str, object]]) -> str:
+    """综合别名和元数据推断厂商。"""
+    vendor = vendor_from_metadata(metadata)
+    if vendor != "generic":
+        return vendor
+    return vendor_from_alias(alias)
+
+
+def is_network_target(alias: Optional[str], metadata: Optional[Dict[str, object]]) -> bool:
+    """综合判断目标是否像网络设备。"""
+    if is_network_metadata(metadata):
+        return True
+    return vendor_from_alias(alias) != "generic"
 
 
 def split_command_text(command_text: str, delimiter: str = ";;") -> List[str]:
@@ -208,6 +323,16 @@ def split_command_text(command_text: str, delimiter: str = ";;") -> List[str]:
         lines = [line.strip() for line in command_text.splitlines() if line.strip()]
         parts = lines if len(lines) > 1 else [command_text]
     return [part.strip() for part in parts if part.strip()]
+
+
+def expand_command_shortcuts(commands: Sequence[str], vendor: Optional[str]) -> List[str]:
+    """将快捷命令展开为厂商专用命令。"""
+    profile = get_device_profile(vendor)
+    shortcuts = profile.command_shortcuts or {}
+    expanded: List[str] = []
+    for command in commands:
+        expanded.append(shortcuts.get(command.strip(), command))
+    return expanded
 
 
 def detect_error(output: str, profile: DeviceProfile) -> Optional[str]:
@@ -269,6 +394,7 @@ def execute_device_commands(
     返回值保持 JSON 友好，便于 CLI 直接输出。
     """
     profile = get_device_profile(vendor)
+    commands = expand_command_shortcuts(commands, profile.vendor)
     transcript_parts: List[str] = []
     command_results: List[Dict[str, object]] = []
     errors: List[str] = []

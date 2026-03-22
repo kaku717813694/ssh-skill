@@ -165,7 +165,7 @@ def main():
     parser.add_argument('--mode', choices=['auto', 'exec', 'shell'], default='auto',
                         help='Execution mode: exec for servers, shell for network devices')
     parser.add_argument('--vendor',
-                        help='Network vendor profile: generic/cisco/arista/huawei/h3c/juniper')
+                        help='Network vendor profile: generic/cisco/arista/huawei/h3c/juniper/fortigate')
     parser.add_argument('--prompt-timeout', type=float, default=8.0,
                         help='Interactive prompt wait timeout in seconds')
     parser.add_argument('--delimiter', default=';;',
@@ -190,9 +190,9 @@ def main():
         params = loader.get_connection_params(args.alias)
         metadata = params.get('metadata') or {}
 
-        from network_device import is_network_metadata, vendor_from_metadata
-        detected_vendor = args.vendor or vendor_from_metadata(metadata)
-        auto_shell = args.mode == 'auto' and (bool(args.vendor) or is_network_metadata(metadata))
+        from network_device import is_network_target, vendor_from_context
+        detected_vendor = args.vendor or vendor_from_context(args.alias, metadata)
+        auto_shell = args.mode == 'auto' and (bool(args.vendor) or is_network_target(args.alias, metadata))
         use_shell = args.mode == 'shell' or auto_shell
 
         if use_shell:

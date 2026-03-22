@@ -172,9 +172,21 @@ python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py access-sw-01 "interface
 
 # 华为/华三设备示例
 python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py agg-sw-01 "display version" --mode shell --vendor huawei
+
+# FortiGate 状态巡检
+python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py firewall "@status" --mode shell --vendor fortigate
 ```
 
-支持厂商 profile：`generic`、`cisco`、`arista`、`huawei`、`h3c`、`juniper`
+支持厂商 profile：`generic`、`cisco`、`arista`、`huawei`、`h3c`、`juniper`、`fortigate`
+
+内置快捷命令：
+- 华为 / H3C：`@uptime`、`@version`
+- FortiGate：`@status`、`@ha`、`@perf`、`@version`
+
+自动识别会优先匹配你当前环境常见命名：
+- `POE-*`、`Core`、`Aggregation-*`、`AC*` → 华为
+- `1-JR-*`、`2-JR-*` → H3C
+- `firewall`、`Route`、`FW*` → FortiGate
 
 ### 上传文件
 
@@ -262,6 +274,11 @@ ssh_execute.py core-sw-01 "show interfaces status"
 
 # 进入配置模式并保存
 ssh_execute.py core-sw-01 "interface gi1/0/10;;description AP-10" --config-mode --save
+
+# 你的现网命名也能直接自动识别
+ssh_execute.py POE-1 "@uptime"
+ssh_execute.py 1-JR-1 "@uptime"
+ssh_execute.py firewall "@status"
 ```
 
 ## 📈 性能数据

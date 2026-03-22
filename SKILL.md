@@ -147,9 +147,23 @@ python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py <别名> "display versi
 
 # 多条配置命令，使用 ;; 分隔
 python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py <别名> "interface gi1/0/1;;description UPLINK" --mode shell --vendor cisco --config-mode --save
+
+# FortiGate 快速巡检
+python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py firewall "@status"
 ```
 
 可选参数：`--mode <auto|exec|shell>` `--vendor <厂商>` `--prompt-timeout <秒>` `--delimiter <分隔符>` `--config-mode` `--save` `--no-disable-paging`
+
+支持厂商：`huawei` `h3c` `fortigate` `cisco` `arista` `juniper`
+
+常用快捷命令：
+- 华为 / H3C：`@uptime` `@version`
+- FortiGate：`@status` `@ha` `@perf` `@version`
+
+当前环境命名自动识别规则：
+- `POE-*`、`Core`、`Aggregation-*`、`AC*` 视为华为
+- `1-JR-*`、`2-JR-*` 视为 H3C
+- `firewall`、`Route`、`FW*` 视为 FortiGate
 
 建议在 `~/.ssh/config` 对应 Host 前增加以下元数据，便于自动识别：
 
