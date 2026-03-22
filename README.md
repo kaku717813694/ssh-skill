@@ -1,6 +1,6 @@
 # SSH Skill - 高性能 SSH 操作技能
 
-> 为 Claude Code 打造的企业级 SSH 管理工具，让远程服务器操作像本地一样简单高效
+> 为 Codex 优化的企业级 SSH 管理工具，适合服务器与网络设备巡检
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -17,7 +17,7 @@
 | **守护进程** | **~0.12s** | **~1.2s** | **~3.6s** | **🔥 3.75x** |
 
 - 首次连接自动启动守护进程
-- 多个 Claude Code 实例共享连接
+- 多个 Codex / Claude 类会话共享连接
 - 自动心跳检测和断线重连
 - 空闲 30 分钟自动退出
 
@@ -90,16 +90,6 @@ Host internal-server
 
 AI 只需要知道 `internal-server` 别名，底层自动处理多级跳转。
 
-### 🖧 网络设备交互模式
-
-**面向交换机/路由器/防火墙的交互式 CLI**
-
-- 自动关闭分页（按厂商下发）
-- 提示符识别
-- 常见确认提示自动应答
-- 配置模式与保存配置
-- `ProxyJump` 链路会自动转换为 Paramiko 跳板链，适合网络区设备
-
 ### 🔧 统一配置管理
 
 **基于标准 OpenSSH 配置** - 兼容所有 SSH 工具
@@ -149,72 +139,55 @@ pip install paramiko
 
 ### 配置
 
-1. 将 `ssh-skill` 目录放到 `~/.claude/skills/` 下
-2. 配置 SSH 密钥或密码认证
-3. 开始使用！
+1. 将 `ssh-skill` 目录放到 `~/.codex/skills/` 下
+2. Windows + PowerShell 环境优先使用 `py -3`
+3. 配置 SSH 密钥或密码认证
+4. 开始使用
 
 ## 🎬 快速开始
 
 ### 执行远程命令
 
-```bash
-python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py prod-web-01 "systemctl status nginx"
+```powershell
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_execute.py" prod-web-01 "systemctl status nginx"
 ```
-
-### 执行网络设备命令
-
-```bash
-# 读取命令
-python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py core-sw-01 "show version" --mode shell --vendor cisco
-
-# 多条配置命令，使用 ;; 分隔
-python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py access-sw-01 "interface gi1/0/24;;description Camera-24" --mode shell --vendor cisco --config-mode --save
-
-# 华为/华三设备示例
-python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py agg-sw-01 "display version" --mode shell --vendor huawei
-
-# FortiGate 状态巡检
-python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py edge-fgt-01 "@status" --mode shell --vendor fortigate
-```
-
-支持厂商 profile：`generic`、`cisco`、`arista`、`huawei`、`h3c`、`juniper`、`fortigate`
-
-内置快捷命令：
-- 华为 / H3C：`@uptime`、`@version`
-- FortiGate：`@status`、`@ha`、`@perf`、`@version`
-
-自动识别只保留通用规则，不包含任何特定环境命名：
-- 别名含 `huawei` / `hw` / `vrp` → 华为
-- 别名含 `h3c` / `comware` → H3C
-- 别名含 `forti` / `fortigate` / `fgt` → FortiGate
-- 或使用更中性的网络别名，如 `core-sw-01`、`edge-fw-01`
 
 ### 上传文件
 
-```bash
+```powershell
 # 小文件（快速）
-MSYS_NO_PATHCONV=1 python ~/.claude/skills/ssh-skill/scripts/ssh_upload.py prod-web-01 ./app.tar.gz /tmp/
+$env:MSYS_NO_PATHCONV='1'
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_upload.py" prod-web-01 ./app.tar.gz /tmp/
 
 # 大文件（自动显示进度）
-MSYS_NO_PATHCONV=1 python ~/.claude/skills/ssh-skill/scripts/ssh_upload.py prod-web-01 ./large-file.iso /tmp/
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_upload.py" prod-web-01 ./large-file.iso /tmp/
 
 # 断点续传
-MSYS_NO_PATHCONV=1 python ~/.claude/skills/ssh-skill/scripts/ssh_upload.py prod-web-01 ./large-file.iso /tmp/ --resume
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_upload.py" prod-web-01 ./large-file.iso /tmp/ --resume
 
 # 递归上传目录
-MSYS_NO_PATHCONV=1 python ~/.claude/skills/ssh-skill/scripts/ssh_upload.py prod-web-01 ./dist/ /var/www/html/ --recursive
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_upload.py" prod-web-01 ./dist/ /var/www/html/ --recursive
 ```
 
 ### 下载文件
 
-```bash
-MSYS_NO_PATHCONV=1 python ~/.claude/skills/ssh-skill/scripts/ssh_download.py prod-web-01 /var/log/app.log ./app.log
+```powershell
+$env:MSYS_NO_PATHCONV='1'
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_download.py" prod-web-01 /var/log/app.log ./app.log
 ```
 
 ### 服务器间传输
 
-```bash
-MSYS_NO_PATHCONV=1 python ~/.claude/skills/ssh-skill/scripts/ssh_server_transfer.py source-server /data/backup.tar.gz target-server /backup/
+```powershell
+$env:MSYS_NO_PATHCONV='1'
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_server_transfer.py" source-server /data/backup.tar.gz target-server /backup/
+```
+
+### 网络设备巡检
+
+```powershell
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_execute.py" h3c_1jr1 "screen-length disable"
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_execute.py" h3c_1jr1 "display current-configuration"
 ```
 
 ## 🎯 使用场景
@@ -254,32 +227,6 @@ ssh_server_transfer.py source /data/ target /backup/ --use-rsync
 ```bash
 # 通过跳板机访问内网服务器（自动处理）
 ssh_execute.py internal-server "docker ps"
-```
-
-### 场景 5：网络设备配置
-
-```ssh-config
-# ===== core-sw-01 =====
-# device_vendor: cisco
-# device_type: switch
-# tags: network,core
-Host core-sw-01
-    HostName 10.10.10.10
-    User admin
-    ProxyJump bastion-a
-```
-
-```bash
-# 自动根据元数据判断为网络设备，切到 shell 模式
-ssh_execute.py core-sw-01 "show interfaces status"
-
-# 进入配置模式并保存
-ssh_execute.py core-sw-01 "interface gi1/0/10;;description AP-10" --config-mode --save
-
-# 通用别名也能自动识别
-ssh_execute.py hw-access-01 "@uptime"
-ssh_execute.py h3c-floor-01 "@uptime"
-ssh_execute.py edge-fgt-01 "@status"
 ```
 
 ## 📈 性能数据
@@ -410,9 +357,9 @@ Host internal-server
     ProxyJump bastion
 ```
 
-## 🎨 与 Claude Code 集成
+## 🎨 与 Codex 集成
 
-在 Claude Code 中，AI 会自动使用 ssh-skill 处理所有 SSH 操作：
+在 Codex 中，AI 会自动使用 ssh-skill 处理 SSH 操作：
 
 ```
 用户：在 prod-web-01 上检查 Nginx 状态
