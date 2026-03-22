@@ -3,13 +3,19 @@ import sys
 import tempfile
 import textwrap
 import unittest
+import json
+from io import StringIO
 from unittest import mock
+from contextlib import redirect_stderr, redirect_stdout
 
 
 REPO_ROOT = os.path.dirname(os.path.dirname(__file__))
 LIB_DIR = os.path.join(REPO_ROOT, "scripts", "lib")
+SCRIPTS_DIR = os.path.join(REPO_ROOT, "scripts")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
+if SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, SCRIPTS_DIR)
 
 
 from config_v3 import SSHConfigLoaderV3
@@ -27,6 +33,7 @@ from network_device import (
 )
 from obsidian_credentials import lookup_password
 from paramiko_client import ConnectionPool
+import ssh_execute
 
 
 class NetworkDeviceHelperTests(unittest.TestCase):
@@ -140,6 +147,63 @@ class ProxyJumpParsingTests(unittest.TestCase):
         self.assertEqual(params["jump_hosts"][1]["host"], "10.0.0.20")
         self.assertEqual(params["jump_hosts"][1]["user"], "ops")
         self.assertEqual(params["jump_hosts"][1]["port"], 2200)
+
+
+class SshExecuteCliTests(unittest.TestCase):
+    def test_main_returns_json_for_unknown_shortcut(self):
+        fake_loader = mock.Mock()
+        fake_loader.get_connection_params.return_value = {"metadata": {}}
+
+        with mock.patch("config_v3.SSHConfigLoaderV3", return_value=fake_loader):
+            with mock.patch.object(
+                ssh_execute,
+                "shell_execute",
+                side_effect=UnknownShortcutError("未知快捷命令: @perf"),
+            ):
+                stderr_buffer = StringIO()
+                with mock.patch.object(
+                    sys,
+                    "argv",
+                    ["ssh_execute.py", "route", "@perf", "--mode", "shell", "--vendor", "fortigate"],
+                ):
+                    with redirect_stderr(stderr_buffer):
+                        with self.assertRaises(SystemExit) as exit_ctx:
+                            ssh_execute.main()
+
+        self.assertEqual(exit_ctx.exception.code, 1)
+        error_payload = json.loads(stderr_buffer.getvalue())
+        self.assertEqual(error_payload["success"], False)
+        self.assertIn("未知快捷命令: @perf", error_payload["stderr"])
+
+    def test_main_exits_cleanly_after_successful_shell_execution(self):
+        fake_loader = mock.Mock()
+        fake_loader.get_connection_params.return_value = {"metadata": {}}
+
+        result = {
+            "success": True,
+            "exit_code": 0,
+            "stdout": "FortiGate-201F v7.4.7",
+            "stderr": "",
+            "mode": "shell",
+            "vendor": "fortigate",
+            "commands": [],
+        }
+
+        with mock.patch("config_v3.SSHConfigLoaderV3", return_value=fake_loader):
+            with mock.patch.object(ssh_execute, "shell_execute", return_value=result):
+                stdout_buffer = StringIO()
+                with mock.patch.object(
+                    sys,
+                    "argv",
+                    ["ssh_execute.py", "route", "@status", "--mode", "shell", "--vendor", "fortigate"],
+                ):
+                    with redirect_stdout(stdout_buffer):
+                        with self.assertRaises(SystemExit) as exit_ctx:
+                            ssh_execute.main()
+
+        self.assertEqual(exit_ctx.exception.code, 0)
+        self.assertIn("FortiGate-201F v7.4.7", stdout_buffer.getvalue())
+        self.assertIn('"success": true', stdout_buffer.getvalue().lower())
 
 
 class ObsidianFallbackTests(unittest.TestCase):

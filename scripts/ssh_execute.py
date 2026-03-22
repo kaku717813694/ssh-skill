@@ -18,6 +18,7 @@ import subprocess
 # 添加lib到路径
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_script_dir, 'lib'))
+from network_device import UnknownShortcutError
 
 
 def _send_message(sock, data):
@@ -137,26 +138,22 @@ def shell_execute(alias, command_text, timeout, vendor=None, prompt_timeout=8.0,
     from network_device import (
         execute_device_commands,
         split_command_text,
-        UnknownShortcutError,
     )
 
     loader = SSHConfigLoaderV3()
     client = loader.from_alias(alias, prefer_paramiko=True)
     commands = split_command_text(command_text, delimiter=delimiter)
 
-    try:
-        return execute_device_commands(
-            client=client,
-            commands=commands,
-            vendor=vendor,
-            timeout=timeout,
-            prompt_timeout=prompt_timeout,
-            disable_paging=disable_paging,
-            config_mode=config_mode,
-            save=save,
-        )
-    except UnknownShortcutError:
-        raise
+    return execute_device_commands(
+        client=client,
+        commands=commands,
+        vendor=vendor,
+        timeout=timeout,
+        prompt_timeout=prompt_timeout,
+        disable_paging=disable_paging,
+        config_mode=config_mode,
+        save=save,
+    )
 
 
 def main():
