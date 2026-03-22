@@ -99,6 +99,12 @@ class NetworkDeviceHelperTests(unittest.TestCase):
             ["get system status", "get system status | grep HA"],
         )
 
+    def test_unknown_shortcut_is_left_unchanged(self):
+        self.assertEqual(
+            expand_command_shortcuts(["@perf"], "fortigate"),
+            ["@perf"],
+        )
+
 
 class ProxyJumpParsingTests(unittest.TestCase):
     def test_parse_proxy_jump_supports_alias_and_inline_host(self):
