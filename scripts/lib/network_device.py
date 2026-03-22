@@ -203,9 +203,14 @@ _NETWORK_TOKENS = (
 )
 
 _ALIAS_VENDOR_RULES = [
-    (re.compile(r"^(?:poe-\d+|ac\d+|core|aggregation-\d+)$", re.IGNORECASE), "huawei"),
-    (re.compile(r"^\d+-jr-\d+$", re.IGNORECASE), "h3c"),
-    (re.compile(r"^(?:fw\d*|firewall|route)$", re.IGNORECASE), "fortigate"),
+    (re.compile(r"(?:^|[-_])(forti|fortigate|fortios|fgt)(?:[-_]|$)", re.IGNORECASE), "fortigate"),
+    (re.compile(r"(?:^|[-_])(huawei|hw|vrp)(?:[-_]|$)", re.IGNORECASE), "huawei"),
+    (re.compile(r"(?:^|[-_])(h3c|comware)(?:[-_]|$)", re.IGNORECASE), "h3c"),
+]
+
+_GENERIC_NETWORK_ALIAS_HINTS = [
+    re.compile(r"(?:^|[-_])(switch|router|firewall|gateway|core-sw|agg-sw|access-sw)(?:[-_]|$)", re.IGNORECASE),
+    re.compile(r"(?:^|[-_])(sw|fw|rt|gw)(?:[-_]|$)", re.IGNORECASE),
 ]
 
 _MODEL_VENDOR_RULES = [
@@ -291,11 +296,11 @@ def vendor_from_metadata(metadata: Optional[Dict[str, object]]) -> str:
 
 
 def vendor_from_alias(alias: Optional[str]) -> str:
-    """根据别名推断厂商，优先适配当前现网命名。"""
+    """根据通用别名特征推断厂商。"""
     if not alias:
         return "generic"
     for pattern, vendor in _ALIAS_VENDOR_RULES:
-        if pattern.match(alias.strip()):
+        if pattern.search(alias.strip()):
             return vendor
     return "generic"
 
@@ -312,7 +317,11 @@ def is_network_target(alias: Optional[str], metadata: Optional[Dict[str, object]
     """综合判断目标是否像网络设备。"""
     if is_network_metadata(metadata):
         return True
-    return vendor_from_alias(alias) != "generic"
+    if vendor_from_alias(alias) != "generic":
+        return True
+    if not alias:
+        return False
+    return any(pattern.search(alias.strip()) for pattern in _GENERIC_NETWORK_ALIAS_HINTS)
 
 
 def split_command_text(command_text: str, delimiter: str = ";;") -> List[str]:

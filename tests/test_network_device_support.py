@@ -41,21 +41,21 @@ class NetworkDeviceHelperTests(unittest.TestCase):
         })
         self.assertEqual(vendor, "cisco")
 
-    def test_vendor_from_alias_matches_real_environment_names(self):
-        self.assertEqual(vendor_from_alias("POE-1"), "huawei")
-        self.assertEqual(vendor_from_alias("1-JR-7"), "h3c")
-        self.assertEqual(vendor_from_alias("firewall"), "fortigate")
+    def test_vendor_from_alias_matches_generic_vendor_markers(self):
+        self.assertEqual(vendor_from_alias("hw-access-01"), "huawei")
+        self.assertEqual(vendor_from_alias("h3c-floor-07"), "h3c")
+        self.assertEqual(vendor_from_alias("edge-fgt-01"), "fortigate")
 
     def test_vendor_from_context_uses_model_when_metadata_has_no_explicit_vendor(self):
-        vendor = vendor_from_context("Core", {
+        vendor = vendor_from_context("dist-sw-01", {
             "model": "FutureMatrix S7706",
             "tags": ["network"],
         })
         self.assertEqual(vendor, "huawei")
 
     def test_is_network_target_detects_alias_without_metadata(self):
-        self.assertTrue(is_network_target("Aggregation-1", {}))
-        self.assertTrue(is_network_target("2-JR-9", None))
+        self.assertTrue(is_network_target("core-sw-01", {}))
+        self.assertTrue(is_network_target("edge-fw-01", None))
         self.assertFalse(is_network_target("app-web-01", {"tags": ["linux", "web"]}))
 
     def test_is_network_metadata_detects_tags(self):
