@@ -20,6 +20,7 @@ from network_device import (
     is_network_metadata,
     is_network_target,
     split_command_text,
+    UnknownShortcutError,
     vendor_from_alias,
     vendor_from_context,
     vendor_from_metadata,
@@ -99,11 +100,9 @@ class NetworkDeviceHelperTests(unittest.TestCase):
             ["get system status", "get system status | grep HA"],
         )
 
-    def test_unknown_shortcut_is_left_unchanged(self):
-        self.assertEqual(
-            expand_command_shortcuts(["@perf"], "fortigate"),
-            ["@perf"],
-        )
+    def test_unknown_shortcut_raises_clear_error(self):
+        with self.assertRaisesRegex(UnknownShortcutError, "@perf"):
+            expand_command_shortcuts(["@perf"], "fortigate")
 
 
 class ProxyJumpParsingTests(unittest.TestCase):

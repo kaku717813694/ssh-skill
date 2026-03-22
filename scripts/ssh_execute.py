@@ -137,22 +137,26 @@ def shell_execute(alias, command_text, timeout, vendor=None, prompt_timeout=8.0,
     from network_device import (
         execute_device_commands,
         split_command_text,
+        UnknownShortcutError,
     )
 
     loader = SSHConfigLoaderV3()
     client = loader.from_alias(alias, prefer_paramiko=True)
     commands = split_command_text(command_text, delimiter=delimiter)
 
-    return execute_device_commands(
-        client=client,
-        commands=commands,
-        vendor=vendor,
-        timeout=timeout,
-        prompt_timeout=prompt_timeout,
-        disable_paging=disable_paging,
-        config_mode=config_mode,
-        save=save,
-    )
+    try:
+        return execute_device_commands(
+            client=client,
+            commands=commands,
+            vendor=vendor,
+            timeout=timeout,
+            prompt_timeout=prompt_timeout,
+            disable_paging=disable_paging,
+            config_mode=config_mode,
+            save=save,
+        )
+    except UnknownShortcutError:
+        raise
 
 
 def main():
@@ -227,6 +231,14 @@ def main():
         print(json.dumps(result, ensure_ascii=True, indent=2))
         sys.exit(0 if result.get('success') else 1)
 
+    except UnknownShortcutError as e:
+        print(json.dumps({
+            'success': False,
+            'exit_code': -1,
+            'stdout': '',
+            'stderr': str(e)
+        }, ensure_ascii=True, indent=2), file=sys.stderr)
+        sys.exit(1)
     except FileNotFoundError as e:
         print(json.dumps({
             'success': False,

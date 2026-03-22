@@ -17,6 +17,10 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
 
+class UnknownShortcutError(ValueError):
+    """用户输入了当前厂商未定义的快捷命令。"""
+
+
 DEFAULT_PROMPT_PATTERNS = [
     re.compile(r"(?m)(?:^|\n)\S+[>#]\s*$"),
     re.compile(r"(?m)(?:^|\n).+ [#$>]\s*$"),
@@ -340,7 +344,13 @@ def expand_command_shortcuts(commands: Sequence[str], vendor: Optional[str]) -> 
     shortcuts = profile.command_shortcuts or {}
     expanded: List[str] = []
     for command in commands:
-        expanded.append(shortcuts.get(command.strip(), command))
+        normalized = command.strip()
+        if normalized.startswith("@") and normalized not in shortcuts:
+            supported = ", ".join(sorted(shortcuts)) if shortcuts else "无"
+            raise UnknownShortcutError(
+                f"未知快捷命令: {normalized} (vendor={profile.vendor}, 可用快捷命令: {supported})"
+            )
+        expanded.append(shortcuts.get(normalized, command))
     return expanded
 
 
