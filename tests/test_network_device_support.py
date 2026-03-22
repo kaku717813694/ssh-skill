@@ -80,12 +80,9 @@ class NetworkDeviceHelperTests(unittest.TestCase):
         error = detect_error("Command fail. Return code -61", profile)
         self.assertEqual(error, "Command fail")
 
-    def test_fortigate_profile_configures_disable_paging_commands(self):
+    def test_fortigate_profile_does_not_apply_stateful_paging_changes_by_default(self):
         profile = get_device_profile("fortigate")
-        self.assertEqual(
-            profile.disable_paging_commands,
-            ("config system console", "set output standard", "end"),
-        )
+        self.assertEqual(profile.disable_paging_commands, ())
 
     def test_more_patterns_do_not_match_normal_output_text(self):
         profile = get_device_profile("generic")

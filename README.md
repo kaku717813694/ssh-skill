@@ -100,6 +100,11 @@ AI 只需要知道 `internal-server` 别名，底层自动处理多级跳转。
 - 支持只读巡检和配置模式
 - 适合华为、H3C、FortiGate 等常见 SSH 网络设备
 
+说明：
+- 华为 / H3C 的禁分页命令属于会话级命令，适合巡检前自动执行
+- FortiGate 的 `config system console -> set output standard` 属于配置模式变更
+- 因此 FortiGate 默认不自动改分页设置，保持只读巡检优先
+
 ### 🔧 统一配置管理
 
 **基于标准 OpenSSH 配置** - 兼容所有 SSH 工具
@@ -176,6 +181,7 @@ py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_execute.py" edge-fgt-01 "get sy
 - 先执行只读命令确认设备类型和提示符
 - 再执行厂商对应命令
 - 未经明确确认，不直接下配置变更
+- FortiGate 如需调整 console 输出模式，先明确这是配置变更
 
 ### 上传文件
 

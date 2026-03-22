@@ -182,7 +182,8 @@ py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_config_manager_v3.py" delete <�
 但它本质上仍然是通用 SSH 框架，不会自动识别厂商 CLI 差异。
 
 处理网络设备时建议：
-- 先发禁分页命令，再发采集命令
+- 华为 / H3C 这类会话级设备，可先发禁分页命令再采集
+- FortiGate 默认保持只读，不自动改 console 配置
 - 优先执行只读巡检命令
 - 避免直接下配置变更，除非用户明确要求
 - 对多设备批量巡检时，优先通过标签筛选
@@ -190,8 +191,13 @@ py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_config_manager_v3.py" delete <�
 常见禁分页示例：
 
 ```text
-华为 / H3C：screen-length 0 temporary
-FortiGate：config system console -> set output standard
+华为：screen-length 0 temporary
+H3C：screen-length disable
+
+FortiGate 说明：
+- 不默认自动执行 `config system console -> set output standard`
+- 因为这属于配置模式变更，不适合作为巡检前的隐式动作
+- 如确实需要，必须在用户明确接受后手工执行
 ```
 
 如果不确定厂商命令：

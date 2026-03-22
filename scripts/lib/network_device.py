@@ -138,11 +138,6 @@ _PROFILES: Dict[str, DeviceProfile] = {
     ),
     "fortigate": DeviceProfile(
         vendor="fortigate",
-        disable_paging_commands=(
-            "config system console",
-            "set output standard",
-            "end",
-        ),
         prompt_patterns=(
             re.compile(r"(?m)(?:^|\n)[A-Za-z0-9_.-]+(?: \([^)]+\))? [#$]\s*$"),
             re.compile(r"(?m)(?:^|\n)[A-Za-z0-9_.-]+(?: \([^)]+\))? >\s*$"),
