@@ -90,6 +90,16 @@ Host internal-server
 
 AI 只需要知道 `internal-server` 别名，底层自动处理多级跳转。
 
+### 🖧 网络设备交互模式
+
+**面向交换机 / 路由器 / 防火墙的交互式 CLI**
+
+- 自动关闭分页
+- 提示符识别
+- 适配交互式 shell 命令
+- 支持只读巡检和配置模式
+- 适合华为、H3C、FortiGate 等常见 SSH 网络设备
+
 ### 🔧 统一配置管理
 
 **基于标准 OpenSSH 配置** - 兼容所有 SSH 工具
@@ -151,6 +161,21 @@ pip install paramiko
 ```powershell
 py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_execute.py" prod-web-01 "systemctl status nginx"
 ```
+
+### 执行网络设备命令
+
+```powershell
+# H3C / 华为先禁分页，再执行巡检命令
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_execute.py" h3c_1jr1 "screen-length disable;;display version"
+
+# FortiGate 读取状态
+py -3 "$HOME/.codex/skills/ssh-skill/scripts/ssh_execute.py" edge-fgt-01 "get system status"
+```
+
+建议：
+- 先执行只读命令确认设备类型和提示符
+- 再执行厂商对应命令
+- 未经明确确认，不直接下配置变更
 
 ### 上传文件
 
@@ -227,6 +252,16 @@ ssh_server_transfer.py source /data/ target /backup/ --use-rsync
 ```bash
 # 通过跳板机访问内网服务器（自动处理）
 ssh_execute.py internal-server "docker ps"
+```
+
+### 场景 5：网络设备巡检
+
+```bash
+# H3C 交换机巡检
+ssh_execute.py h3c_1jr1 "screen-length disable;;display current-configuration"
+
+# FortiGate 状态查看
+ssh_execute.py edge-fgt-01 "get system status"
 ```
 
 ## 📈 性能数据
