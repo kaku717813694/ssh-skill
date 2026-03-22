@@ -1,18 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SSH命令执行CLI工具 v3.0
+SSH命令执行CLI工具 v3.1
 
-支持通过别名执行SSH命令，从标准 SSH config 和注释元数据中加载配置。
-自动检测守护进程：有则走长连接，无则走直连。
-
-用法：
-    python ssh_execute.py <alias> <command> [--timeout TIMEOUT]
-    python ssh_execute.py <alias> <command> --no-daemon
-
-示例：
-    python ssh_execute.py prod-web-01 "whoami && hostname"
-    python ssh_execute.py DEV-002 "df -h" --timeout 60
+默认保持服务器模式；当显式指定网络设备参数，或从元数据识别为
+网络设备时，自动切换到交互式 shell 模式。
 """
 
 import sys
@@ -138,13 +130,52 @@ def direct_execute(alias, command, timeout):
     }
 
 
+def shell_execute(alias, command_text, timeout, vendor=None, prompt_timeout=8.0,
+                  delimiter=';;', disable_paging=True, config_mode=False, save=False):
+    """通过 Paramiko 交互式 shell 执行网络设备命令。"""
+    from config_v3 import SSHConfigLoaderV3
+    from network_device import (
+        execute_device_commands,
+        split_command_text,
+    )
+
+    loader = SSHConfigLoaderV3()
+    client = loader.from_alias(alias, prefer_paramiko=True)
+    commands = split_command_text(command_text, delimiter=delimiter)
+
+    return execute_device_commands(
+        client=client,
+        commands=commands,
+        vendor=vendor,
+        timeout=timeout,
+        prompt_timeout=prompt_timeout,
+        disable_paging=disable_paging,
+        config_mode=config_mode,
+        save=save,
+    )
+
+
 def main():
-    parser = argparse.ArgumentParser(description='SSH command execution tool v3.0')
+    parser = argparse.ArgumentParser(description='SSH command execution tool v3.1')
     parser.add_argument('alias', help='SSH host alias from ~/.ssh/config')
     parser.add_argument('command', help='Command to execute')
     parser.add_argument('--timeout', type=int, help='Timeout in seconds')
     parser.add_argument('--no-daemon', action='store_true',
                         help='Disable daemon mode, use direct SSH connection')
+    parser.add_argument('--mode', choices=['auto', 'exec', 'shell'], default='auto',
+                        help='Execution mode: exec for servers, shell for network devices')
+    parser.add_argument('--vendor',
+                        help='Network vendor profile: generic/cisco/arista/huawei/h3c/juniper')
+    parser.add_argument('--prompt-timeout', type=float, default=8.0,
+                        help='Interactive prompt wait timeout in seconds')
+    parser.add_argument('--delimiter', default=';;',
+                        help='Command delimiter for shell mode, default: ;;')
+    parser.add_argument('--config-mode', action='store_true',
+                        help='Enter vendor config mode before executing commands in shell mode')
+    parser.add_argument('--save', action='store_true',
+                        help='Save configuration after commands in shell mode')
+    parser.add_argument('--no-disable-paging', action='store_true',
+                        help='Do not send vendor-specific paging disable commands in shell mode')
 
     args = parser.parse_args()
     timeout = args.timeout or 30
@@ -157,23 +188,41 @@ def main():
         from config_v3 import SSHConfigLoaderV3
         loader = SSHConfigLoaderV3()
         params = loader.get_connection_params(args.alias)
+        metadata = params.get('metadata') or {}
 
-        has_key = params.get('key_file') is not None
-        has_password = params.get('password') is not None
-        use_daemon = has_password and not args.no_daemon  # 只有密码认证才使用守护进程
+        from network_device import is_network_metadata, vendor_from_metadata
+        detected_vendor = args.vendor or vendor_from_metadata(metadata)
+        auto_shell = args.mode == 'auto' and (bool(args.vendor) or is_network_metadata(metadata))
+        use_shell = args.mode == 'shell' or auto_shell
 
-        if use_daemon:
-            # 密码认证：尝试通过守护进程执行
-            result = try_daemon_execute(args.alias, args.command, timeout)
+        if use_shell:
+            result = shell_execute(
+                args.alias,
+                args.command,
+                timeout=timeout,
+                vendor=detected_vendor,
+                prompt_timeout=args.prompt_timeout,
+                delimiter=args.delimiter,
+                disable_paging=not args.no_disable_paging,
+                config_mode=args.config_mode,
+                save=args.save,
+            )
+        else:
+            has_password = params.get('password') is not None
+            use_daemon = has_password and not args.no_daemon  # 只有密码认证才使用守护进程
 
-            # 守护进程不可用，尝试后台启动
+            if use_daemon:
+                # 密码认证：尝试通过守护进程执行
+                result = try_daemon_execute(args.alias, args.command, timeout)
+
+                # 守护进程不可用，尝试后台启动
+                if result is None:
+                    if start_daemon_background(args.alias):
+                        result = try_daemon_execute(args.alias, args.command, timeout)
+
+            # 仍然没有结果，使用直连（密钥认证会使用 NativeSSHClient）
             if result is None:
-                if start_daemon_background(args.alias):
-                    result = try_daemon_execute(args.alias, args.command, timeout)
-
-        # 仍然没有结果，使用直连（密钥认证会使用 NativeSSHClient）
-        if result is None:
-            result = direct_execute(args.alias, args.command, timeout)
+                result = direct_execute(args.alias, args.command, timeout)
 
         print(json.dumps(result, ensure_ascii=True, indent=2))
         sys.exit(0 if result.get('success') else 1)

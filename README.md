@@ -90,6 +90,16 @@ Host internal-server
 
 AI 只需要知道 `internal-server` 别名，底层自动处理多级跳转。
 
+### 🖧 网络设备交互模式
+
+**面向交换机/路由器/防火墙的交互式 CLI**
+
+- 自动关闭分页（按厂商下发）
+- 提示符识别
+- 常见确认提示自动应答
+- 配置模式与保存配置
+- `ProxyJump` 链路会自动转换为 Paramiko 跳板链，适合网络区设备
+
 ### 🔧 统一配置管理
 
 **基于标准 OpenSSH 配置** - 兼容所有 SSH 工具
@@ -150,6 +160,21 @@ pip install paramiko
 ```bash
 python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py prod-web-01 "systemctl status nginx"
 ```
+
+### 执行网络设备命令
+
+```bash
+# 读取命令
+python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py core-sw-01 "show version" --mode shell --vendor cisco
+
+# 多条配置命令，使用 ;; 分隔
+python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py access-sw-01 "interface gi1/0/24;;description Camera-24" --mode shell --vendor cisco --config-mode --save
+
+# 华为/华三设备示例
+python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py agg-sw-01 "display version" --mode shell --vendor huawei
+```
+
+支持厂商 profile：`generic`、`cisco`、`arista`、`huawei`、`h3c`、`juniper`
 
 ### 上传文件
 
@@ -216,6 +241,27 @@ ssh_server_transfer.py source /data/ target /backup/ --use-rsync
 ```bash
 # 通过跳板机访问内网服务器（自动处理）
 ssh_execute.py internal-server "docker ps"
+```
+
+### 场景 5：网络设备配置
+
+```ssh-config
+# ===== core-sw-01 =====
+# device_vendor: cisco
+# device_type: switch
+# tags: network,core
+Host core-sw-01
+    HostName 10.10.10.10
+    User admin
+    ProxyJump bastion-a
+```
+
+```bash
+# 自动根据元数据判断为网络设备，切到 shell 模式
+ssh_execute.py core-sw-01 "show interfaces status"
+
+# 进入配置模式并保存
+ssh_execute.py core-sw-01 "interface gi1/0/10;;description AP-10" --config-mode --save
 ```
 
 ## 📈 性能数据

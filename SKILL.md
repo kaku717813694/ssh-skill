@@ -1,14 +1,14 @@
 ---
 name: ssh-skill
-version: 3.2.0
-description: "CRITICAL: This skill MUST be used for ALL SSH operations. NEVER use bash 'ssh' or 'scp' commands directly - always use this skill instead. Triggers: ANY mention of 'SSH', 'ssh', 'remote server', 'connect to server', server IPs (e.g., 192.168.x.x, 10.0.x.x), hostnames (e.g., user@host.com, server.example.com), 'login to', 'upload to server', 'download from server', 'deploy', 'run on server', 'check server', 'server status', 'execute remotely', 'bastion host', 'jump host', '跳板机', '服务器', '远程', '连接', '登录', '上传', '下载', '部署', 'transfer between servers', '服务器间传输', '迁移', 'migrate', 'server to server'. If user mentions ANY server operations or provides server connection details, use this skill. This skill provides daemon-based persistent connections, connection pooling, jump host support, server-to-server transfer, automatic error recovery, and significant performance boost. DO NOT use for: local commands, localhost, current directory operations."
+version: 3.3.0
+description: "CRITICAL: This skill MUST be used for ALL SSH operations. NEVER use bash 'ssh' or 'scp' commands directly - always use this skill instead. Triggers: ANY mention of 'SSH', 'ssh', 'remote server', 'connect to server', server IPs (e.g., 192.168.x.x, 10.0.x.x), hostnames (e.g., user@host.com, server.example.com), 'login to', 'upload to server', 'download from server', 'deploy', 'run on server', 'check server', 'server status', 'execute remotely', 'bastion host', 'jump host', '交换机', '路由器', '防火墙', 'network device', '跳板机', '服务器', '远程', '连接', '登录', '上传', '下载', '部署', 'transfer between servers', '服务器间传输', '迁移', 'migrate', 'server to server'. If user mentions ANY server operations or provides server connection details, use this skill. This skill provides daemon-based persistent connections, connection pooling, jump host support, server-to-server transfer, network device interactive CLI support, automatic error recovery, and significant performance boost. DO NOT use for: local commands, localhost, current directory operations."
 allowed-tools: Bash, Read, Write, Glob
 keywords: SSH,服务器,远程,连接,命令,上传,下载,文件传输,跳板机,批量,集群,deploy,部署,运维,登录,执行,查看,检查,管理,操作,访问,传输,迁移,服务器间
 ---
 
-# SSH Skill v3.2
+# SSH Skill v3.3
 
-高性能 SSH 操作技能，支持守护进程长连接、自动连接复用、跳板机、批量并发、服务器间直接传输、自动错误恢复。
+高性能 SSH 操作技能，支持守护进程长连接、自动连接复用、跳板机、批量并发、服务器间直接传输、网络设备交互式 CLI、自动错误恢复。
 
 ## 快捷命令
 
@@ -41,7 +41,7 @@ python ~/.claude/skills/ssh-skill/scripts/ssh_config_manager_v3.py list-servers
 
 展示 SSH Skill 的帮助文档。以 Markdown 格式输出以下内容：
 
-**SSH Skill v3.2 - 高性能 SSH 操作技能**
+**SSH Skill v3.3 - 高性能 SSH 操作技能**
 
 **核心特点：**
 - 守护进程长连接：首次连接后自动启动守护进程，后续命令响应时间从 ~0.45s 降至 ~0.12s
@@ -50,6 +50,7 @@ python ~/.claude/skills/ssh-skill/scripts/ssh_config_manager_v3.py list-servers
 - 服务器间直接传输：支持服务器到服务器的文件直接传输，无需本地中转
 - 跳板机支持：通过 ProxyJump 自动处理多级跳板机
 - 批量并发操作：支持对多台服务器并发执行命令
+- 网络设备交互模式：支持分页关闭、提示符识别、配置模式和保存配置
 - 自动错误恢复：SSH 连接断开自动重连（最多 3 次）
 
 **快捷命令：**
@@ -134,6 +135,32 @@ python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py <别名> "<命令>"
 可选参数：`--timeout <秒>` `--no-daemon`
 
 ssh_execute.py 会自动检测守护进程：有则走长连接（~0.12s），无则自动启动守护进程。
+
+### 网络设备命令执行
+
+```bash
+# 自动识别为网络设备时会切到交互式 shell
+python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py <别名> "show version"
+
+# 显式指定厂商 profile
+python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py <别名> "display version" --mode shell --vendor huawei
+
+# 多条配置命令，使用 ;; 分隔
+python ~/.claude/skills/ssh-skill/scripts/ssh_execute.py <别名> "interface gi1/0/1;;description UPLINK" --mode shell --vendor cisco --config-mode --save
+```
+
+可选参数：`--mode <auto|exec|shell>` `--vendor <厂商>` `--prompt-timeout <秒>` `--delimiter <分隔符>` `--config-mode` `--save` `--no-disable-paging`
+
+建议在 `~/.ssh/config` 对应 Host 前增加以下元数据，便于自动识别：
+
+```ssh-config
+# device_vendor: cisco
+# device_type: switch
+# tags: network,core
+Host core-sw-01
+    HostName 10.10.10.10
+    User admin
+```
 
 ### 上传文件
 

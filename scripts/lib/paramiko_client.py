@@ -108,11 +108,7 @@ class ConnectionPool:
                     )
                 elif key_file:
                     # 密钥认证
-                    pkey = None
-                    if key_passphrase:
-                        pkey = paramiko.RSAKey.from_private_key_file(key_file, password=key_passphrase)
-                    else:
-                        pkey = paramiko.RSAKey.from_private_key_file(key_file)
+                    pkey = _load_private_key(key_file, key_passphrase)
 
                     client.connect(
                         hostname=host,
@@ -179,6 +175,20 @@ class ConnectionPool:
 
 # 全局连接池实例
 _connection_pool = ConnectionPool()
+
+
+def _load_private_key(key_file: str, key_passphrase: Optional[str] = None):
+    """兼容多种私钥格式。"""
+    key_file = os.path.expanduser(key_file)
+    errors = []
+    for key_class in [paramiko.RSAKey, paramiko.Ed25519Key, paramiko.ECDSAKey]:
+        try:
+            if key_passphrase:
+                return key_class.from_private_key_file(key_file, password=key_passphrase)
+            return key_class.from_private_key_file(key_file)
+        except Exception as exc:  # pragma: no cover - 只在真实密钥异常时出现
+            errors.append(str(exc))
+    raise ValueError(f"无法加载密钥文件 {key_file}: {' | '.join(errors)}")
 
 
 class ParamikoClient:
@@ -436,7 +446,7 @@ class ParamikoClient:
                     allow_agent=False
                 )
             elif jump_key_file:
-                pkey = paramiko.RSAKey.from_private_key_file(jump_key_file)
+                pkey = _load_private_key(jump_key_file)
                 current_client.connect(
                     hostname=jump_host,
                     port=jump_port,
@@ -488,7 +498,7 @@ class ParamikoClient:
                         allow_agent=False
                     )
                 elif jump_key_file:
-                    pkey = paramiko.RSAKey.from_private_key_file(jump_key_file)
+                    pkey = _load_private_key(jump_key_file)
                     next_client.connect(
                         hostname=jump_host,
                         port=jump_port,
@@ -525,11 +535,7 @@ class ParamikoClient:
                     allow_agent=False
                 )
             elif self.key_file:
-                pkey = None
-                if self.key_passphrase:
-                    pkey = paramiko.RSAKey.from_private_key_file(self.key_file, password=self.key_passphrase)
-                else:
-                    pkey = paramiko.RSAKey.from_private_key_file(self.key_file)
+                pkey = _load_private_key(self.key_file, self.key_passphrase)
 
                 target_client.connect(
                     hostname=self.host,

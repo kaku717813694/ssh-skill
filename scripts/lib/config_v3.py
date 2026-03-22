@@ -1,21 +1,12 @@
 """
-配置管理模块 v3.0
+配置管理模块 v3.1
 
-基于标准 OpenSSH config 格式的配置加载器
-
-新特性：
-1. 从 ~/.ssh/config 加载配置
-2. 支持别名（Host）
-3. 元数据从注释中解析
-4. 完全兼容 ProxyJump（跳板机）
-5. 支持密码认证（从注释中读取）
+基于标准 OpenSSH config 格式的配置加载器。
 """
 
 import os
-import json
 import re
 from typing import Dict, Optional, List
-from pathlib import Path
 
 try:
     import paramiko
@@ -111,7 +102,11 @@ class SSHConfigLoaderV3:
             'environment': 'unknown',
             'tags': [],
             'location': '',
-            'password': ''
+            'password': '',
+            'device_type': '',
+            'device_vendor': '',
+            'platform': '',
+            'role': '',
         }
 
         # 读取 config 文件，查找该 Host 前的注释
@@ -176,8 +171,56 @@ class SSHConfigLoaderV3:
                     metadata['location'] = value
                 elif key == 'password':
                     metadata['password'] = value
+                else:
+                    metadata[key] = value
 
         return metadata
+
+    def _parse_proxy_jump(self, proxy_jump: str) -> List[dict]:
+        """
+        把 ProxyJump 字符串解析为 Paramiko 可用的跳板机配置列表。
+
+        支持：
+        - 直接地址：user@host:port
+        - 仅别名：bastion-prod
+        - 多级跳板：jump-a,jump-b
+        """
+        jump_hosts: List[dict] = []
+
+        for entry in proxy_jump.split(','):
+            item = entry.strip()
+            if not item:
+                continue
+
+            if self._alias_exists(item):
+                jump_config = self.load_ssh_config(item)
+                jump_metadata = self.load_metadata(item)
+                jump_host = {
+                    'host': jump_config.get('hostname'),
+                    'user': jump_config.get('user'),
+                    'port': int(jump_config.get('port', 22)),
+                }
+                identity_files = jump_config.get('identityfile')
+                if identity_files:
+                    jump_host['key_file'] = identity_files[0] if isinstance(identity_files, list) else identity_files
+                if jump_metadata.get('password'):
+                    jump_host['password'] = jump_metadata['password']
+                jump_hosts.append(jump_host)
+                continue
+
+            match = re.match(r'(?:(?P<user>[^@]+)@)?(?P<host>[^:]+)(?::(?P<port>\d+))?$', item)
+            if not match:
+                continue
+
+            jump_host = {
+                'host': match.group('host'),
+                'port': int(match.group('port') or 22),
+            }
+            if match.group('user'):
+                jump_host['user'] = match.group('user')
+            jump_hosts.append(jump_host)
+
+        return jump_hosts
 
     def get_connection_params(self, alias: str) -> dict:
         """
@@ -217,6 +260,7 @@ class SSHConfigLoaderV3:
         proxy_jump = config.get('proxyjump')
         if proxy_jump:
             params['proxy_jump'] = proxy_jump
+            params['jump_hosts'] = self._parse_proxy_jump(proxy_jump)
 
         # ForwardAgent（SSH agent 转发）
         forward_agent = config.get('forwardagent', 'no').lower()
@@ -228,7 +272,7 @@ class SSHConfigLoaderV3:
 
         return params
 
-    def from_alias(self, alias: str):
+    def from_alias(self, alias: str, prefer_paramiko: bool = False):
         """
         通过别名创建 SSH 客户端（智能选择）
 
@@ -238,6 +282,7 @@ class SSHConfigLoaderV3:
 
         Args:
             alias: 主机别名
+            prefer_paramiko: 为交互式 shell 等场景强制使用 Paramiko
 
         Returns:
             NativeSSHClient 或 ParamikoClient 实例
@@ -248,7 +293,7 @@ class SSHConfigLoaderV3:
         has_password = params.get('password') is not None
 
         # 智能选择客户端类型
-        if has_key and not has_password:
+        if has_key and not has_password and not prefer_paramiko:
             # 密钥认证 → 使用原生 SSH（支持 agent forwarding）
             try:
                 from .native_ssh_client import NativeSSHClient
@@ -278,7 +323,9 @@ class SSHConfigLoaderV3:
                 port=params['port'],
                 password=params.get('password'),
                 key_file=params.get('key_file'),
-                timeout=params['timeout']
+                timeout=params['timeout'],
+                jump_hosts=params.get('jump_hosts'),
+                forward_agent=params.get('forward_agent', False),
             )
 
         # 设置别名（用于守护进程标识）
