@@ -3,6 +3,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from unittest import mock
 
 
 REPO_ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -23,6 +24,8 @@ from network_device import (
     vendor_from_context,
     vendor_from_metadata,
 )
+from obsidian_credentials import lookup_password
+from paramiko_client import ConnectionPool
 
 
 class NetworkDeviceHelperTests(unittest.TestCase):
@@ -84,7 +87,7 @@ class NetworkDeviceHelperTests(unittest.TestCase):
         )
         self.assertEqual(
             expand_command_shortcuts(["@status", "@ha"], "fortigate"),
-            ["get system status", "get system ha status"],
+            ["get system status", "get system status | grep HA"],
         )
 
 
@@ -123,6 +126,115 @@ class ProxyJumpParsingTests(unittest.TestCase):
         self.assertEqual(params["jump_hosts"][1]["host"], "10.0.0.20")
         self.assertEqual(params["jump_hosts"][1]["user"], "ops")
         self.assertEqual(params["jump_hosts"][1]["port"], 2200)
+
+
+class ObsidianFallbackTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.password_file = os.path.join(self.temp_dir.name, "各项密码.md")
+        os.environ["SSH_SKILL_OBSIDIAN_PASSWORD_FILE"] = self.password_file
+        os.environ["SSH_SKILL_OBSIDIAN_CONTROLLED_DIR"] = self.temp_dir.name
+        self.addCleanup(os.environ.pop, "SSH_SKILL_OBSIDIAN_PASSWORD_FILE", None)
+        self.addCleanup(os.environ.pop, "SSH_SKILL_OBSIDIAN_CONTROLLED_DIR", None)
+
+    def write_password_file(self, content: str):
+        with open(self.password_file, "w", encoding="utf-8") as handle:
+            handle.write(textwrap.dedent(content).strip())
+
+    def test_lookup_password_prefers_ip_match(self):
+        self.write_password_file(
+            """
+            | IP | 主机名 | 设备类型 | 用户名 | 密码 |
+            | --- | --- | --- | --- | --- |
+            | 10.1.1.1 | firewall | 防火墙 | admin | OBSIDIAN-PW |
+            """
+        )
+        password = lookup_password(hostname="10.1.1.1", alias="route", user="admin")
+        self.assertEqual(password, "OBSIDIAN-PW")
+
+    def test_config_loader_uses_obsidian_password_when_config_has_no_password(self):
+        self.write_password_file(
+            """
+            | IP | 主机名 | 设备类型 | 用户名 | 密码 |
+            | --- | --- | --- | --- | --- |
+            | 10.1.1.2 | core | 核心交换机 | admin | OBSIDIAN-PW |
+            """
+        )
+        config_path = os.path.join(self.temp_dir.name, "config")
+        with open(config_path, "w", encoding="utf-8") as handle:
+            handle.write(
+                textwrap.dedent(
+                    """
+                    # ===== core =====
+                    # description: test core
+                    # tags: network
+                    Host core
+                        HostName 10.1.1.2
+                        User admin
+                        Port 22
+                    """
+                ).strip()
+            )
+
+        loader = SSHConfigLoaderV3(config_path=config_path)
+        params = loader.get_connection_params("core")
+        self.assertEqual(params["password"], "OBSIDIAN-PW")
+        self.assertEqual(params["password_source"], "obsidian")
+
+    def test_config_loader_keeps_config_password_and_adds_obsidian_fallback(self):
+        self.write_password_file(
+            """
+            | IP | 主机名 | 设备类型 | 用户名 | 密码 |
+            | --- | --- | --- | --- | --- |
+            | 10.1.1.1 | firewall | 防火墙 | admin | NEW-PW |
+            """
+        )
+        config_path = os.path.join(self.temp_dir.name, "config")
+        with open(config_path, "w", encoding="utf-8") as handle:
+            handle.write(
+                textwrap.dedent(
+                    """
+                    # ===== route =====
+                    # description: test route
+                    # tags: network,router
+                    # password: OLD-PW
+                    Host route
+                        HostName 10.1.1.1
+                        User admin
+                        Port 22
+                    """
+                ).strip()
+            )
+
+        loader = SSHConfigLoaderV3(config_path=config_path)
+        params = loader.get_connection_params("route")
+        self.assertEqual(params["password"], "OLD-PW")
+        self.assertEqual(params["fallback_password"], "NEW-PW")
+
+    def test_connection_pool_retries_with_fallback_password(self):
+        pool = ConnectionPool()
+        fake_client = mock.Mock()
+        auth_exc = Exception("Authentication failed.")
+        fake_client.connect.side_effect = [auth_exc, None]
+        fake_client.get_transport.return_value = None
+
+        with mock.patch("paramiko_client.paramiko.SSHClient", return_value=fake_client):
+            conn = pool.get_connection(
+                host="10.1.1.1",
+                port=22,
+                user="admin",
+                password="OLD-PW",
+                fallback_password="NEW-PW",
+                timeout=10,
+            )
+
+        self.assertIs(conn, fake_client)
+        self.assertEqual(fake_client.connect.call_count, 2)
+        first_password = fake_client.connect.call_args_list[0].kwargs["password"]
+        second_password = fake_client.connect.call_args_list[1].kwargs["password"]
+        self.assertEqual(first_password, "OLD-PW")
+        self.assertEqual(second_password, "NEW-PW")
 
 
 if __name__ == "__main__":

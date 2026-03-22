@@ -13,6 +13,11 @@ try:
 except ImportError:
     raise ImportError("需要安装 paramiko 库: pip install paramiko")
 
+try:
+    from .obsidian_credentials import lookup_password
+except ImportError:
+    from obsidian_credentials import lookup_password
+
 
 class SSHConfigLoaderV3:
     """SSH Config 加载器 v3.0
@@ -176,6 +181,21 @@ class SSHConfigLoaderV3:
 
         return metadata
 
+    def _lookup_obsidian_password(
+        self,
+        alias: str,
+        hostname: Optional[str],
+        user: Optional[str],
+        metadata: Optional[dict],
+    ) -> Optional[str]:
+        """按需从 Obsidian 受控资料补查密码。"""
+        return lookup_password(
+            hostname=hostname,
+            alias=alias,
+            user=user,
+            metadata=metadata,
+        )
+
     def _parse_proxy_jump(self, proxy_jump: str) -> List[dict]:
         """
         把 ProxyJump 字符串解析为 Paramiko 可用的跳板机配置列表。
@@ -203,8 +223,18 @@ class SSHConfigLoaderV3:
                 identity_files = jump_config.get('identityfile')
                 if identity_files:
                     jump_host['key_file'] = identity_files[0] if isinstance(identity_files, list) else identity_files
+                obsidian_password = self._lookup_obsidian_password(
+                    alias=item,
+                    hostname=jump_host['host'],
+                    user=jump_host.get('user'),
+                    metadata=jump_metadata,
+                )
                 if jump_metadata.get('password'):
                     jump_host['password'] = jump_metadata['password']
+                    if obsidian_password and obsidian_password != jump_metadata['password']:
+                        jump_host['fallback_password'] = obsidian_password
+                elif obsidian_password:
+                    jump_host['password'] = obsidian_password
                 jump_hosts.append(jump_host)
                 continue
 
@@ -218,6 +248,14 @@ class SSHConfigLoaderV3:
             }
             if match.group('user'):
                 jump_host['user'] = match.group('user')
+            obsidian_password = self._lookup_obsidian_password(
+                alias=item,
+                hostname=jump_host['host'],
+                user=jump_host.get('user'),
+                metadata=None,
+            )
+            if obsidian_password:
+                jump_host['password'] = obsidian_password
             jump_hosts.append(jump_host)
 
         return jump_hosts
@@ -252,9 +290,22 @@ class SSHConfigLoaderV3:
             else:
                 params['key_file'] = identity_files
 
-        # 密码（从注释元数据中获取）
+        obsidian_password = self._lookup_obsidian_password(
+            alias=alias,
+            hostname=params['hostname'],
+            user=params['user'],
+            metadata=metadata,
+        )
+
+        # 密码优先从 config 元数据读取；缺失时补查 Obsidian。
         if metadata.get('password'):
             params['password'] = metadata['password']
+            params['password_source'] = 'config'
+            if obsidian_password and obsidian_password != metadata['password']:
+                params['fallback_password'] = obsidian_password
+        elif obsidian_password:
+            params['password'] = obsidian_password
+            params['password_source'] = 'obsidian'
 
         # ProxyJump（跳板机）
         proxy_jump = config.get('proxyjump')
@@ -322,6 +373,7 @@ class SSHConfigLoaderV3:
                 user=params['user'],
                 port=params['port'],
                 password=params.get('password'),
+                fallback_password=params.get('fallback_password'),
                 key_file=params.get('key_file'),
                 timeout=params['timeout'],
                 jump_hosts=params.get('jump_hosts'),

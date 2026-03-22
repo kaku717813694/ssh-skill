@@ -50,6 +50,7 @@ class ConnectionPool:
         port: int,
         user: str,
         password: Optional[str] = None,
+        fallback_password: Optional[str] = None,
         key_file: Optional[str] = None,
         key_passphrase: Optional[str] = None,
         timeout: int = 30
@@ -97,14 +98,18 @@ class ConnectionPool:
             try:
                 if password:
                     # 密码认证
-                    client.connect(
-                        hostname=host,
-                        port=port,
-                        username=user,
-                        password=password,
-                        timeout=timeout,
-                        look_for_keys=False,
-                        allow_agent=False
+                    _connect_with_password_retry(
+                        client,
+                        {
+                            'hostname': host,
+                            'port': port,
+                            'username': user,
+                            'password': password,
+                            'timeout': timeout,
+                            'look_for_keys': False,
+                            'allow_agent': False,
+                        },
+                        fallback_password=fallback_password,
                     )
                 elif key_file:
                     # 密钥认证
@@ -191,6 +196,37 @@ def _load_private_key(key_file: str, key_passphrase: Optional[str] = None):
     raise ValueError(f"无法加载密钥文件 {key_file}: {' | '.join(errors)}")
 
 
+def _auth_error_like(exc: Exception) -> bool:
+    """判断异常是否像密码认证失败。"""
+    if isinstance(exc, paramiko.AuthenticationException):
+        return True
+    message = str(exc).lower()
+    return any(token in message for token in ['authentication failed', 'auth fail', 'permission denied'])
+
+
+def _connect_with_password_retry(
+    client: paramiko.SSHClient,
+    connect_kwargs: Dict[str, object],
+    fallback_password: Optional[str] = None,
+):
+    """使用密码连接，并在怀疑密码错误时回退到备用密码重试一次。"""
+    try:
+        client.connect(**connect_kwargs)
+        return
+    except Exception as exc:
+        original_password = connect_kwargs.get('password')
+        if (
+            fallback_password
+            and fallback_password != original_password
+            and _auth_error_like(exc)
+        ):
+            retry_kwargs = dict(connect_kwargs)
+            retry_kwargs['password'] = fallback_password
+            client.connect(**retry_kwargs)
+            return
+        raise
+
+
 class ParamikoClient:
     """基于 Paramiko 的 SSH 客户端
 
@@ -203,6 +239,7 @@ class ParamikoClient:
         host: str,
         user: str,
         password: Optional[str] = None,
+        fallback_password: Optional[str] = None,
         key_file: Optional[str] = None,
         port: int = 22,
         timeout: int = 30,
@@ -229,6 +266,7 @@ class ParamikoClient:
         self.host = host
         self.user = user
         self.password = password
+        self.fallback_password = fallback_password
         self.key_file = key_file
         self.port = port
         self.timeout = timeout
@@ -436,14 +474,18 @@ class ParamikoClient:
 
             # 连接到第一个跳板机
             if jump_password:
-                current_client.connect(
-                    hostname=jump_host,
-                    port=jump_port,
-                    username=jump_user,
-                    password=jump_password,
-                    timeout=self.timeout,
-                    look_for_keys=False,
-                    allow_agent=False
+                _connect_with_password_retry(
+                    current_client,
+                    {
+                        'hostname': jump_host,
+                        'port': jump_port,
+                        'username': jump_user,
+                        'password': jump_password,
+                        'timeout': self.timeout,
+                        'look_for_keys': False,
+                        'allow_agent': False,
+                    },
+                    fallback_password=first_jump.get('fallback_password') if isinstance(first_jump, dict) else self.fallback_password,
                 )
             elif jump_key_file:
                 pkey = _load_private_key(jump_key_file)
@@ -487,15 +529,19 @@ class ParamikoClient:
                 next_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
                 if jump_password:
-                    next_client.connect(
-                        hostname=jump_host,
-                        port=jump_port,
-                        username=jump_user,
-                        password=jump_password,
-                        sock=channel,
-                        timeout=self.timeout,
-                        look_for_keys=False,
-                        allow_agent=False
+                    _connect_with_password_retry(
+                        next_client,
+                        {
+                            'hostname': jump_host,
+                            'port': jump_port,
+                            'username': jump_user,
+                            'password': jump_password,
+                            'sock': channel,
+                            'timeout': self.timeout,
+                            'look_for_keys': False,
+                            'allow_agent': False,
+                        },
+                        fallback_password=jump.get('fallback_password') if isinstance(jump, dict) else self.fallback_password,
                     )
                 elif jump_key_file:
                     pkey = _load_private_key(jump_key_file)
@@ -524,15 +570,19 @@ class ParamikoClient:
             target_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
             if self.password:
-                target_client.connect(
-                    hostname=self.host,
-                    port=self.port,
-                    username=self.user,
-                    password=self.password,
-                    sock=channel,
-                    timeout=self.timeout,
-                    look_for_keys=False,
-                    allow_agent=False
+                _connect_with_password_retry(
+                    target_client,
+                    {
+                        'hostname': self.host,
+                        'port': self.port,
+                        'username': self.user,
+                        'password': self.password,
+                        'sock': channel,
+                        'timeout': self.timeout,
+                        'look_for_keys': False,
+                        'allow_agent': False,
+                    },
+                    fallback_password=self.fallback_password,
                 )
             elif self.key_file:
                 pkey = _load_private_key(self.key_file, self.key_passphrase)
@@ -576,6 +626,7 @@ class ParamikoClient:
             port=self.port,
             user=self.user,
             password=self.password,
+            fallback_password=self.fallback_password,
             key_file=self.key_file,
             key_passphrase=self.key_passphrase,
             timeout=self.timeout
@@ -647,7 +698,14 @@ class ParamikoClient:
             if self.password:
                 connect_kwargs['password'] = self.password
 
-            client.connect(**connect_kwargs)
+            if self.password:
+                _connect_with_password_retry(
+                    client,
+                    connect_kwargs,
+                    fallback_password=self.fallback_password,
+                )
+            else:
+                client.connect(**connect_kwargs)
 
             # 启用 agent forwarding
             transport = client.get_transport()

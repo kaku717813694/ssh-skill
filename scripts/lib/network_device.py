@@ -153,7 +153,7 @@ _PROFILES: Dict[str, DeviceProfile] = {
         ),
         command_shortcuts={
             "@status": "get system status",
-            "@ha": "get system ha status",
+            "@ha": "get system status | grep HA",
             "@perf": "get system performance status",
             "@version": "get system status",
         },

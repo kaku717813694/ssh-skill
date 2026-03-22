@@ -130,6 +130,19 @@ def _recv_message(sock: socket.socket, timeout: float = None) -> dict:
     return json.loads(body.decode('utf-8'))
 
 
+def _auth_error_like(exc: Exception) -> bool:
+    """判断异常是否像密码认证失败。"""
+    try:
+        import paramiko
+        if isinstance(exc, paramiko.AuthenticationException):
+            return True
+    except Exception:
+        pass
+
+    message = str(exc).lower()
+    return any(token in message for token in ['authentication failed', 'auth fail', 'permission denied'])
+
+
 class SSHDaemon:
     """SSH 长连接守护进程 v3.0"""
 
@@ -244,6 +257,7 @@ class SSHDaemon:
         user = params['user']
         port = params['port']
         password = params.get('password')
+        fallback_password = params.get('fallback_password')
         key_file = params.get('key_file')
 
         # 解析密钥路径
@@ -282,7 +296,22 @@ class SSHDaemon:
         else:
             raise ValueError("必须提供 password 或 key_file")
 
-        client.connect(**connect_kwargs)
+        if password:
+            try:
+                client.connect(**connect_kwargs)
+            except Exception as exc:
+                if (
+                    fallback_password
+                    and fallback_password != password
+                    and _auth_error_like(exc)
+                ):
+                    retry_kwargs = dict(connect_kwargs)
+                    retry_kwargs['password'] = fallback_password
+                    client.connect(**retry_kwargs)
+                else:
+                    raise
+        else:
+            client.connect(**connect_kwargs)
         self._ssh_client = client
 
     def _reconnect_ssh(self) -> bool:
