@@ -28,7 +28,8 @@ DEFAULT_MORE_PATTERNS = [
     re.compile(r"--More--", re.IGNORECASE),
     re.compile(r"---- More ----", re.IGNORECASE),
     re.compile(r"press any key to continue", re.IGNORECASE),
-    re.compile(r"more", re.IGNORECASE),
+    # Match a standalone paging prompt line, not arbitrary "more" in normal output.
+    re.compile(r"(?im)(?:^|[\r\n])\s*(?:--+\s*)?more(?:\s*--+|[: ]*)\s*$"),
 ]
 
 DEFAULT_CONFIRM_RULES = [
@@ -137,6 +138,11 @@ _PROFILES: Dict[str, DeviceProfile] = {
     ),
     "fortigate": DeviceProfile(
         vendor="fortigate",
+        disable_paging_commands=(
+            "config system console",
+            "set output standard",
+            "end",
+        ),
         prompt_patterns=(
             re.compile(r"(?m)(?:^|\n)[A-Za-z0-9_.-]+(?: \([^)]+\))? [#$]\s*$"),
             re.compile(r"(?m)(?:^|\n)[A-Za-z0-9_.-]+(?: \([^)]+\))? >\s*$"),

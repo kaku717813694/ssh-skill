@@ -1,8 +1,9 @@
 """
 Obsidian 受控资料凭据查询。
 
-默认从受控资料中的 `各项密码.md` 查找，如未命中则扫描同目录下其他
-Markdown 文件。仅返回运行时所需密码，不向配置文件回写。
+仅在显式配置环境变量时启用受控资料查找。优先查找指定的
+`各项密码.md`，如未命中则扫描同目录下其他 Markdown 文件。
+仅返回运行时所需密码，不向配置文件回写。
 """
 
 from __future__ import annotations
@@ -11,32 +12,44 @@ import os
 from typing import Dict, Iterable, Optional
 
 
-DEFAULT_PASSWORD_FILE = (
-    r"\\192.168.32.196\3.2 Information Technology(IT)\Leon\MyNotes"
-    r"\30_资产\受控资料\各项密码.md"
-)
 PASSWORD_FILE_ENV = "SSH_SKILL_OBSIDIAN_PASSWORD_FILE"
 CONTROLLED_DIR_ENV = "SSH_SKILL_OBSIDIAN_CONTROLLED_DIR"
 
 
-def _primary_password_file() -> str:
-    return os.environ.get(PASSWORD_FILE_ENV, DEFAULT_PASSWORD_FILE)
+def _get_env_path(name: str) -> Optional[str]:
+    value = os.environ.get(name)
+    if not value:
+        return None
+    value = value.strip()
+    return value or None
 
 
-def _controlled_dir() -> str:
-    return os.environ.get(CONTROLLED_DIR_ENV, os.path.dirname(_primary_password_file()))
+def _primary_password_file() -> Optional[str]:
+    return _get_env_path(PASSWORD_FILE_ENV)
+
+
+def _controlled_dir() -> Optional[str]:
+    configured_dir = _get_env_path(CONTROLLED_DIR_ENV)
+    if configured_dir:
+        return configured_dir
+
+    primary = _primary_password_file()
+    if primary:
+        return os.path.dirname(primary)
+
+    return None
 
 
 def _iter_markdown_files() -> Iterable[str]:
     primary = _primary_password_file()
     yielded = set()
 
-    if os.path.exists(primary):
+    if primary and os.path.exists(primary):
         yielded.add(os.path.normcase(primary))
         yield primary
 
     controlled_dir = _controlled_dir()
-    if not os.path.isdir(controlled_dir):
+    if not controlled_dir or not os.path.isdir(controlled_dir):
         return
 
     for name in sorted(os.listdir(controlled_dir)):

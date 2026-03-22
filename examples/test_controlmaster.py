@@ -12,11 +12,25 @@ import os
 import subprocess
 import time
 
+import pytest
+
 # 测试配置（请替换）
 HOST = "192.0.2.10"
 USER = "deploy"
 KEY_FILE = "./keys/example_id_ed25519"
 ITERATIONS = 10
+ENABLE_ENV = "SSH_SKILL_RUN_EXAMPLE_TESTS"
+
+
+def _example_test_enabled() -> bool:
+    """只在显式开启时执行该示例集成测试。"""
+    return os.environ.get(ENABLE_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+pytestmark = pytest.mark.skipif(
+    not _example_test_enabled(),
+    reason="example benchmark disabled by default; set SSH_SKILL_RUN_EXAMPLE_TESTS=1 to enable",
+)
 
 
 def _user_known_hosts_file_arg() -> str:

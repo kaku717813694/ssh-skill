@@ -80,6 +80,18 @@ class NetworkDeviceHelperTests(unittest.TestCase):
         error = detect_error("Command fail. Return code -61", profile)
         self.assertEqual(error, "Command fail")
 
+    def test_fortigate_profile_configures_disable_paging_commands(self):
+        profile = get_device_profile("fortigate")
+        self.assertEqual(
+            profile.disable_paging_commands,
+            ("config system console", "set output standard", "end"),
+        )
+
+    def test_more_patterns_do_not_match_normal_output_text(self):
+        profile = get_device_profile("generic")
+        text = "Need more detail before making a decision."
+        self.assertFalse(any(pattern.search(text) for pattern in profile.more_patterns))
+
     def test_expand_command_shortcuts_for_real_vendor_checks(self):
         self.assertEqual(
             expand_command_shortcuts(["@uptime"], "h3c"),
@@ -211,6 +223,13 @@ class ObsidianFallbackTests(unittest.TestCase):
         params = loader.get_connection_params("route")
         self.assertEqual(params["password"], "OLD-PW")
         self.assertEqual(params["fallback_password"], "NEW-PW")
+
+    def test_lookup_password_is_disabled_without_explicit_env_configuration(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SSH_SKILL_OBSIDIAN_PASSWORD_FILE", None)
+            os.environ.pop("SSH_SKILL_OBSIDIAN_CONTROLLED_DIR", None)
+            password = lookup_password(hostname="10.1.1.1", alias="route", user="admin")
+        self.assertIsNone(password)
 
     def test_connection_pool_retries_with_fallback_password(self):
         pool = ConnectionPool()
